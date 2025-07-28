@@ -1,0 +1,275 @@
+# 时间中心因子图优化参数配置
+# 基于gnssFGO论文的时间中心方法
+
+# 系统基本参数
+system:
+  name: "time_centric_underwater_navigation"
+  version: "1.0.0"
+  mode: "time_centric"  # 区别于传统的"keyframe"模式
+  
+  # 坐标系定义
+  frames:
+    world_frame: "odom"
+    base_frame: "base_link"
+    imu_frame: "imu_link"
+    dvl_frame: "dvl_link"
+
+# 时间中心核心参数
+time_centric:
+  # 时间窗口管理
+  time_window_size: 2.0          # 时间窗口大小 (秒)
+  sliding_window_step: 0.1       # 滑动窗口步长 (秒)
+  max_time_gap: 0.5              # 最大时间间隔 (秒)
+  
+  # 插值方法配置
+  interpolation:
+    method: "gp"                 # 插值方法: "linear", "gp", "spline"
+    
+    # 高斯过程参数
+    gaussian_process:
+      length_scale: 0.1          # 长度尺度参数
+      signal_variance: 1.0       # 信号方差
+      noise_variance: 0.01       # 噪声方差
+      max_control_points: 20     # 最大控制点数量
+      kernel_type: "rbf"         # 核函数类型: "rbf", "matern"
+      
+    # 样条插值参数
+    spline:
+      degree: 3                  # 样条次数
+      smoothing_factor: 0.1      # 平滑因子
+      
+    # 线性插值参数
+    linear:
+      extrapolation_limit: 0.1   # 外推限制 (秒)
+  
+  # 连续查询配置
+  continuous_query:
+    enable: true                 # 启用连续查询
+    frequency: 50.0              # 查询频率 (Hz)
+    query_ahead_time: 0.1        # 提前查询时间 (秒)
+    confidence_threshold: 0.5    # 置信度阈值
+  
+  # 时间同步
+  time_synchronization:
+    enable: true                 # 启用时间同步
+    max_time_offset: 0.01        # 最大时间偏移 (秒)
+    sync_method: "linear"        # 同步方法: "linear", "nearest"
+
+# 传感器配置 (时间中心扩展)
+sensors:
+  # 杆臂误差补偿配置
+  lever_arm_compensation:
+    enable: true                 # 启用杆臂误差补偿
+
+    # IMU到GPS的杆臂向量 (在载体坐标系中，单位：米)
+    imu_to_gps: [1.4, 0.18, -0.71]  # [前向, 右向, 下向] GPS在IMU前方1.4m, 右侧0.18m, 上方0.71m
+
+    # IMU到DVL的杆臂向量 (在载体坐标系中，单位：米)
+    imu_to_dvl: [1.4, 0.18, 0.45]   # [前向, 右向, 下向] DVL在IMU前方1.4m, 右侧0.18m, 下方0.45m
+
+    # 杆臂向量的不确定性 (标准差，单位：米)
+    lever_arm_uncertainty: [0.01, 0.01, 0.01]
+
+    # 补偿方法
+    compensation_method: "full"      # "full": 完整补偿, "position_only": 仅位置补偿
+
+  imu:
+    frequency: 100.0
+    time_offset: 0.0             # 时间偏移校正 (秒)
+
+    # IMU安装位置 (载体坐标系原点，通常设为IMU位置)
+    installation_position: [0.0, 0.0, 0.0]  # [x, y, z] 米
+    
+    # 噪声参数
+    accelerometer_noise_density: 0.01
+    gyroscope_noise_density: 0.0017
+    magnetometer_noise_density: 0.1
+    
+    # 偏差参数
+    accelerometer_bias_stability: 0.001
+    gyroscope_bias_stability: 0.0001
+    accelerometer_bias_random_walk: 0.0001
+    gyroscope_bias_random_walk: 0.00001
+    
+    # 时间中心处理
+    time_centric:
+      enable_preintegration: true
+      preintegration_window: 0.1  # 预积分窗口 (秒)
+      adaptive_noise: true        # 自适应噪声
+      outlier_rejection: true     # 异常值剔除
+  
+  gps:
+    frequency: 1.0               # GPS更新频率 (Hz)
+    time_offset: 0.0             # 时间偏移校正 (秒)
+
+    # GPS安装位置 (相对于载体坐标系原点)
+    installation_position: [1.4, 0.18, -0.71]  # [x, y, z] 米
+
+    # 噪声参数
+    position_noise_std: [0.1, 0.1, 0.2]      # [东, 北, 上] 米
+    velocity_noise_std: [0.05, 0.05, 0.1]    # [东, 北, 上] m/s
+
+    # 时间中心处理
+    time_centric:
+      enable_lever_arm_compensation: true     # 启用杆臂补偿
+      interpolation_method: "linear"          # GPS专用插值方法
+      outlier_detection: true                 # GPS异常值检测
+      outlier_threshold: 3.0                  # 异常值阈值 (sigma)
+
+  dvl:
+    frequency: 10.0
+    time_offset: 0.0             # 时间偏移校正 (秒)
+
+    # DVL安装位置 (相对于载体坐标系原点)
+    installation_position: [1.4, 0.18, 0.45]   # [x, y, z] 米
+    
+    # 噪声参数
+    velocity_noise_std: [0.02, 0.02, 0.05]
+    
+    # 时间中心处理
+    time_centric:
+      interpolation_method: "linear"  # DVL专用插值方法
+      velocity_smoothing: true        # 速度平滑
+      smoothing_window: 0.5          # 平滑窗口 (秒)
+      adaptive_noise: true           # 自适应噪声
+      altitude_dependent_noise: true # 高度相关噪声
+  
+  magnetometer:
+    frequency: 10.0
+    time_offset: 0.0
+    
+    # 噪声参数
+    noise_std: [0.1, 0.1, 0.1]
+    declination_angle: 0.0       # 磁偏角 (弧度)
+    
+    # 时间中心处理
+    time_centric:
+      enable_heading_constraint: true
+      heading_smoothing: true
+      smoothing_window: 1.0
+
+# 优化器配置 (时间中心扩展)
+optimizer:
+  # 基本参数
+  max_iterations: 10
+  convergence_threshold: 1e-6
+  optimization_frequency: 20.0
+  
+  # 时间中心优化
+  time_centric_optimization:
+    enable: true
+    batch_size: 100              # 批处理大小
+    overlap_ratio: 0.2           # 重叠比例
+    marginalization_strategy: "time_based"  # 边缘化策略
+    
+  # 因子配置
+  factors:
+    # 时间连续性因子
+    temporal_continuity:
+      enable: true
+      weight: 1.0
+      smoothness_constraint: true
+      
+    # IMU预积分因子 (时间中心)
+    imu_preintegration:
+      enable: true
+      noise_model: "adaptive"     # 自适应噪声模型
+      time_interpolation: true    # 时间插值
+      
+    # DVL速度因子 (时间中心)
+    dvl_velocity:
+      enable: true
+      noise_model: "robust"
+      robust_kernel: "huber"
+      robust_threshold: 1.0
+      time_interpolation: true
+      
+    # 磁力计因子 (时间中心)
+    magnetometer:
+      enable: true
+      noise_model: "gaussian"
+      time_interpolation: true
+      
+    # 先验因子
+    prior:
+      enable: true
+      position_std: [1.0, 1.0, 1.0]
+      velocity_std: [0.1, 0.1, 0.1]
+      orientation_std: [0.1, 0.1, 0.1]
+      bias_acc_std: [0.1, 0.1, 0.1]
+      bias_gyr_std: [0.01, 0.01, 0.01]
+  
+  # 边缘化配置
+  marginalization:
+    enable: true
+    strategy: "time_based"       # 基于时间的边缘化
+    keep_time_window: 2.0        # 保持的时间窗口 (秒)
+    marginalize_frequency: 5.0   # 边缘化频率 (Hz)
+  
+  # 异常值检测
+  outlier_detection:
+    enable: true
+    method: "time_consistency"   # 时间一致性检测
+    chi_square_threshold: 9.21
+    temporal_threshold: 0.1      # 时间阈值 (秒)
+
+# 可视化配置 (时间中心扩展)
+visualization:
+  enable: true
+  frequency: 10.0
+  
+  # 时间中心可视化
+  time_centric_viz:
+    show_control_points: true    # 显示控制点
+    show_interpolated_path: true # 显示插值路径
+    show_confidence_bands: true  # 显示置信区间
+    show_time_window: true       # 显示时间窗口
+    
+    # 颜色配置
+    control_points_color: [1.0, 0.0, 0.0, 1.0]    # 红色
+    interpolated_path_color: [0.0, 1.0, 0.0, 0.7] # 半透明绿色
+    confidence_band_color: [0.0, 0.0, 1.0, 0.3]   # 半透明蓝色
+    
+    # 标记大小
+    control_point_size: 0.1
+    path_line_width: 0.05
+  
+  # 传统可视化
+  trajectory_marker:
+    color: [0.0, 1.0, 0.0, 1.0]
+    scale: 0.1
+  
+  reference_marker:
+    color: [1.0, 0.0, 0.0, 1.0]
+    scale: 0.05
+
+# 性能配置
+performance:
+  # 计算资源管理
+  max_cpu_usage: 80.0            # 最大CPU使用率 (%)
+  memory_limit: 2048             # 内存限制 (MB)
+  
+  # 实时性保证
+  max_processing_delay: 0.05     # 最大处理延迟 (秒)
+  priority_scheduling: true      # 优先级调度
+  
+  # 缓存管理
+  trajectory_cache_size: 1000    # 轨迹缓存大小
+  measurement_buffer_size: 10000 # 测量缓冲区大小
+
+# 调试和日志
+debug:
+  enable_timing: true            # 启用时间统计
+  enable_profiling: false        # 启用性能分析
+  log_level: "INFO"              # 日志级别
+  
+  # 时间中心调试
+  time_centric_debug:
+    log_interpolation: false     # 记录插值过程
+    log_time_sync: false         # 记录时间同步
+    save_trajectory_cache: false # 保存轨迹缓存
+    
+  # 输出目录
+  output_directory: "/tmp/underwater_nav_time_centric"
+  save_optimization_history: false
+  save_interpolation_results: false

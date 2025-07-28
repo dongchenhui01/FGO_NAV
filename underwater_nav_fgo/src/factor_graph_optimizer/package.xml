@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>factor_graph_optimizer</name>
+  <version>1.0.0</version>
+  <description>Factor graph optimization for underwater navigation using IMU and DVL</description>
+  
+  <maintainer email="your.email@example.com">Your Name</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- ROS2 dependencies -->
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>underwater_nav_msgs</depend>
+
+  <!-- System dependencies -->
+  <depend>eigen3_cmake_module</depend>
+  <build_depend>eigen3</build_depend>
+  <build_depend>libgtsam-dev</build_depend>
+  <build_depend>libboost-all-dev</build_depend>
+  <build_depend>libyaml-cpp-dev</build_depend>
+
+  <exec_depend>eigen3</exec_depend>
+  <exec_depend>libgtsam-dev</exec_depend>
+  <exec_depend>libboost-all-dev</exec_depend>
+  <exec_depend>libyaml-cpp-dev</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

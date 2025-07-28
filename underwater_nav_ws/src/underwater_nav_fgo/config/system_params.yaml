@@ -1,0 +1,147 @@
+# 水下导航系统主配置文件
+
+system:
+  # 基本参数
+  name: "underwater_navigation_system"
+  version: "1.0.0"
+  
+  # 坐标系定义
+  frames:
+    world_frame: "odom"
+    base_frame: "base_link"
+    imu_frame: "imu_link"
+    dvl_frame: "dvl_link"
+  
+  # 传感器频率
+  frequencies:
+    imu_hz: 100.0
+    dvl_hz: 10.0
+    optimization_hz: 20.0
+    visualization_hz: 5.0
+
+# IMU配置
+imu:
+  frequency: 100.0
+  accelerometer_noise_density: 0.01
+  gyroscope_noise_density: 0.0017
+  magnetometer_noise_density: 0.1
+  accelerometer_bias_stability: 0.001
+  gyroscope_bias_stability: 0.0001
+  magnetometer_bias_stability: 0.01
+  accelerometer_bias_random_walk: 0.0001
+  gyroscope_bias_random_walk: 0.00001
+  initial_accelerometer_bias_uncertainty: 0.1
+  initial_gyroscope_bias_uncertainty: 0.01
+  gravity_magnitude: 9.81
+  frame_id: "imu_link"
+  rotation_matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+  translation: [0.0, 0.0, 0.0]
+  max_acceleration: 50.0
+  max_angular_velocity: 10.0
+  max_magnetic_field: 1000.0
+
+# DVL配置
+dvl:
+  frequency: 10.0
+  velocity_noise_std: [0.02, 0.02, 0.05]
+  max_velocity: 5.0
+  min_altitude: 0.5
+  max_altitude: 100.0
+  beam_angle: 30.0
+  num_beams: 4
+  min_good_beams: 3
+  min_beam_quality: 50.0
+  velocity_threshold: 0.01
+  frame_id: "dvl_link"
+  rotation_matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+  translation: [0.0, 0.0, 0.0]
+  adaptive_noise:
+    enable: true
+    base_noise: 0.02
+    altitude_factor: 0.001
+    velocity_factor: 0.01
+  outlier_detection:
+    enable: true
+    velocity_jump_threshold: 1.0
+    consistency_window: 5
+
+# 优化器配置
+optimizer:
+  window_size: 50
+  keyframe_interval: 0.1
+  max_iterations: 10
+  convergence_threshold: 1e-6
+  factors:
+    imu_preintegration:
+      enable: true
+      noise_model: "gaussian"
+    dvl_velocity:
+      enable: true
+      noise_model: "robust"
+      robust_kernel: "huber"
+      robust_threshold: 1.0
+    magnetometer:
+      enable: true
+      noise_model: "gaussian"
+      declination_angle: 0.0
+    prior:
+      enable: true
+      position_std: [1.0, 1.0, 1.0]
+      velocity_std: [0.1, 0.1, 0.1]
+      orientation_std: [0.1, 0.1, 0.1]
+      bias_acc_std: [0.1, 0.1, 0.1]
+      bias_gyr_std: [0.01, 0.01, 0.01]
+  marginalization:
+    enable: true
+    margin_old_states: true
+    keep_fixed_states: 5
+  initialization:
+    static_duration: 2.0
+    gravity_alignment: true
+    magnetic_alignment: true
+    initial_position_std: [0.1, 0.1, 0.1]
+    initial_velocity_std: [0.01, 0.01, 0.01]
+    initial_orientation_std: [0.05, 0.05, 0.1]
+  outlier_rejection:
+    enable: true
+    chi_square_threshold: 9.21
+  performance:
+    max_solve_time: 0.05
+    enable_timing: true
+    enable_profiling: false
+
+# 可视化配置
+visualization:
+  enable: true
+  frequency: 5.0
+  publish_markers: true
+  publish_paths: true
+  max_path_length: 1000
+  output_directory: "/tmp/underwater_nav_results"
+  
+  # 标记样式
+  trajectory_marker:
+    color: [0.0, 1.0, 0.0, 1.0]  # 绿色
+    scale: 0.1
+  
+  reference_marker:
+    color: [1.0, 0.0, 0.0, 1.0]  # 红色
+    scale: 0.05
+  
+  error_marker:
+    color: [1.0, 1.0, 0.0, 1.0]  # 黄色
+    scale: 0.02
+
+# 数据播放配置
+data_playback:
+  default_rate: 1.0
+  loop_playback: false
+  start_paused: false
+  publish_gps_reference: true
+  
+# 日志配置
+logging:
+  level: "INFO"
+  enable_file_logging: true
+  log_directory: "/tmp/underwater_nav_logs"
+  max_log_files: 10

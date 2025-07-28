@@ -1,0 +1,91 @@
+# LSTM_TimeFGO_nav .gitignore
+
+# 编译输出
+build/
+install/
+log/
+*.o
+*.so
+*.a
+*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+dist/
+build/
+
+# ROS2
+*.db
+*.db-*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+*.tmp
+*.temp
+
+# 数据文件 (可选，根据需要调整)
+# data/
+# models/
+# results/
+
+# 大文件 (PDF论文文件较大，建议单独处理)
+*.pdf
+
+# 仿真环境中的大文件
+auv_simulation_env/Copter-4.3.8.tar.gz
+auv_simulation_env/ardupilot/
+
+# 编译输出和构建文件
+underwater_nav_ws/build/
+underwater_nav_ws/install/
+underwater_nav_ws/log/
+
+# Python环境和库文件
+gtsam_project/gtsam_env/
+
+# 数据文件 (大文件)
+*.csv
+lstm_dvl_training/data/*.npy
+lstm_dvl_training/data/*.pkl
+
+# 训练结果和模型 (可选)
+lstm_dvl_training/models/
+lstm_dvl_training/results/
+lstm_dvl_training/logs/
+
+# 编译缓存
+.cache/
+.cache-*/
+
+# 依赖包
+node_modules/
+vendor/
+
+# 环境变量文件
+.env
+.env.local
+.env.production 
