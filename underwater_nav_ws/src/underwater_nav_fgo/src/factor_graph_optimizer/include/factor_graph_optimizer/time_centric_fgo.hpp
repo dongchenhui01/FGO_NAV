@@ -175,6 +175,8 @@ public:
     
     OptimizationStats getOptimizationStats() const;
 
+    std::vector<gtsam::Pose3> getRecentOptimizedPoses(size_t count);
+
 private:
     /**
      * @brief 处理时间戳数据队列

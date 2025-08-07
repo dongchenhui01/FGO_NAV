@@ -233,3 +233,25 @@ debug:
   output_directory: "/tmp/underwater_nav_time_centric"
   save_optimization_history: false
   save_interpolation_results: false
+
+#==============================================================================
+# GP-LSTM-FGO ADDED PARAMETERS
+#==============================================================================
+lstm_params:
+  # --- 模型文件路径 (请替换为您的真实路径) ---
+  velocity_model_path: "/home/dongchenhui/LSTM_TimeFGO_nav/lstm_dvl_training/models/lstm_velocity_model.pt"
+  position_model_path: "/home/dongchenhui/LSTM_TimeFGO_nav/lstm_dvl_training/models/lstm_position_model.pt"
+
+  # --- 位置校正模块 ---
+  position_correction_enabled: true
+  position_correction_period: 30.0 # 单位: 秒
+  # 噪声标准差 [N, E, D]，单位: 米
+  noise_pos_lstm: [5.0, 5.0, 10.0] 
+
+# WSOS 异常检测参数 (源自 AUV_LSTM_FGO 论文)
+wsos_params:
+  enabled: true
+  window_size: 10
+  neighbor_range: 5
+  threshold: 0.9974
+  gaussian_kernel_size: 1.0

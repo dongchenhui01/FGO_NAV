@@ -34,6 +34,9 @@ pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
 # 查找GTSAM
 find_package(GTSAM REQUIRED)
 
+# 查找 Torch (LibTorch C++ API)
+find_package(Torch REQUIRED)
+
 # 包含目录
 include_directories(
   include
@@ -63,6 +66,8 @@ add_library(${PROJECT_NAME}_core
   src/dvl_factor.cpp
   src/time_centric_methods.cpp
   src/lever_arm_compensation.cpp
+  src/DynamicDvlHandler.cpp
+  src/LSTMPositionFactor.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_core
@@ -91,6 +96,7 @@ add_executable(time_centric_navigation_node
 
 target_link_libraries(time_centric_navigation_node
   ${PROJECT_NAME}_core
+  ${TORCH_LIBRARIES}
 )
 
 ament_target_dependencies(time_centric_navigation_node ${dependencies})

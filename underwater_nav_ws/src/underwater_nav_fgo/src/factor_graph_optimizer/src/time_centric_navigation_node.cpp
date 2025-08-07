@@ -12,6 +12,9 @@
 
 #include "factor_graph_optimizer/underwater_fgo.hpp"
 #include "factor_graph_optimizer/lever_arm_compensation.hpp"
+#include "factor_graph_optimizer/DynamicDvlHandler.h"
+#include "factor_graph_optimizer/LSTMPositionFactor.h"
+#include <torch/script.h>
 
 namespace underwater_navigation {
 
@@ -73,6 +76,37 @@ public:
         // 初始化路径消息
         trajectory_path_.header.frame_id = "odom";
         
+        // --- GP-LSTM-FGO 模块初始化 ---
+        RCLCPP_INFO(this->get_logger(), "Initializing GP-LSTM-FGO modules...");
+
+        // 初始化 DVL 处理器
+        std::string velocity_model_path = this->get_parameter("lstm_params.velocity_model_path").as_string();
+        int window_size = this->get_parameter("wsos_params.window_size").as_int();
+        double threshold = this->get_parameter("wsos_params.threshold").as_double();
+        
+        dvl_handler_.initialize(velocity_model_path, window_size, threshold);
+
+        // 加载位置预测模型
+        try {
+            std::string pos_model_path = this->get_parameter("lstm_params.position_model_path").as_string();
+            if(!pos_model_path.empty()){
+                lstm_position_model_ = torch::jit::load(pos_model_path);
+                lstm_position_model_.eval();
+                RCLCPP_INFO(this->get_logger(), "LSTM position model loaded successfully.");
+            }
+        } catch (const c10::Error& e) {
+            RCLCPP_ERROR(this->get_logger(), "Error loading the LSTM position model: %s", e.what());
+        }
+
+        // 创建并启动位置校正计时器
+        if (this->get_parameter("lstm_params.position_correction_enabled").as_bool()) {
+            auto period_s = this->get_parameter("lstm_params.position_correction_period").as_double();
+            auto period = std::chrono::duration<double>(period_s);
+            position_correction_timer_ = this->create_wall_timer(period, 
+                std::bind(&TimeCentricNavigationNode::onPositionCorrectionTimer, this));
+            RCLCPP_INFO(this->get_logger(), "LSTM position correction timer started with %.1f s period.", period_s);
+        }
+        
         RCLCPP_INFO(this->get_logger(), "时间中心水下导航节点初始化完成");
         RCLCPP_INFO(this->get_logger(), "时间窗口大小: %.2f秒", time_window_size_);
         RCLCPP_INFO(this->get_logger(), "插值方法: %s", interpolation_method_.c_str());
@@ -92,6 +126,19 @@ private:
         this->declare_parameter("interpolation_method", "gp");
         this->declare_parameter("enable_continuous_query", true);
         this->declare_parameter("query_frequency", 50.0);
+        
+        // --- GP-LSTM-FGO 参数 ---
+        this->declare_parameter("lstm_params.velocity_model_path", "");
+        this->declare_parameter("lstm_params.position_model_path", "");
+        this->declare_parameter("lstm_params.position_correction_enabled", true);
+        this->declare_parameter("lstm_params.position_correction_period", 30.0);
+        this->declare_parameter("lstm_params.noise_pos_lstm", std::vector<double>{5.0, 5.0, 10.0});
+        
+        this->declare_parameter("wsos_params.enabled", true);
+        this->declare_parameter("wsos_params.window_size", 10);
+        this->declare_parameter("wsos_params.neighbor_range", 5);
+        this->declare_parameter("wsos_params.threshold", 0.9974);
+        this->declare_parameter("wsos_params.gaussian_kernel_size", 1.0);
         
         // 获取参数值
         optimization_frequency_ = this->get_parameter("optimization_frequency").as_double();
@@ -162,10 +209,33 @@ private:
             return;
         }
         
-        fgo_->addDvlMeasurement(*msg);
+        // --- GP-LSTM-FGO DVL处理 ---
+        gtsam::Vector3 raw_velocity(msg->velocity.x, msg->velocity.y, msg->velocity.z);
+        double timestamp = rclcpp::Time(msg->header.stamp).seconds();
+        
+        // 使用DVL处理器进行异常检测和校正
+        gtsam::Vector3 clean_velocity = dvl_handler_.processDvlMeasurement(raw_velocity, timestamp);
+        
+        // 创建校正后的DVL消息
+        auto corrected_msg = *msg;
+        corrected_msg.velocity.x = clean_velocity.x();
+        corrected_msg.velocity.y = clean_velocity.y();
+        corrected_msg.velocity.z = clean_velocity.z();
+        
+        // 处理校正后的DVL数据
+        fgo_->addDvlMeasurement(corrected_msg);
         
         // 记录最新数据时间
         last_data_time_ = this->now();
+        
+        // 输出处理统计信息
+        auto stats = dvl_handler_.getStatistics();
+        if (stats.total_measurements % 100 == 0) {
+            RCLCPP_INFO(this->get_logger(), 
+                "DVL处理统计: 总数=%d, 异常=%d, 校正=%d, 平均处理时间=%.2f微秒",
+                stats.total_measurements, stats.anomaly_detections, 
+                stats.corrections_applied, stats.average_processing_time);
+        }
     }
     
     void checkInitialization() {
@@ -422,6 +492,93 @@ private:
     // 初始化数据
     std::vector<underwater_nav_msgs::msg::ImuData> initialization_imu_data_;
     std::vector<underwater_nav_msgs::msg::DvlData> initialization_dvl_data_;
+
+    // --- GP-LSTM-FGO 新增成员 ---
+    fgo::utils::DynamicDvlHandler dvl_handler_;
+    torch::jit::script::Module lstm_position_model_;
+    rclcpp::TimerBase::SharedPtr position_correction_timer_;
+    fgo::factor::LSTMPositionPredictor position_predictor_;
+
+    // --- 新增回调函数声明 ---
+    void onPositionCorrectionTimer()
+    {
+        if(!fgo_->isGraphInitialized()) {
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "LSTM Position Correction Triggered!");
+        // 1. 获取历史轨迹
+        const int history_size = 10; // LSTM模型需要的输入序列长度
+        auto history_poses = fgo_->getRecentOptimizedPoses(history_size); 
+        if(history_poses.size() < history_size){
+            RCLCPP_WARN(this->get_logger(), "Not enough poses in history for LSTM correction. Required: %d, Have: %zu", history_size, history_poses.size());
+            return;
+        }
+        // 2. 将数据转换为Tensor，调用模型
+        std::vector<double> flat_history;
+        for(const auto& pose : history_poses) {
+            const auto& pos = pose.translation();
+            flat_history.push_back(pos.x());
+            flat_history.push_back(pos.y());
+            flat_history.push_back(pos.z());
+        }
+        torch::Tensor input_tensor = torch::from_blob(flat_history.data(), {1, history_size, 3}, torch::kDouble).to(torch::kFloat);
+        std::vector<torch::jit::IValue> inputs;
+        inputs.push_back(input_tensor);
+        at::Tensor output_tensor;
+        try {
+            output_tensor = lstm_position_model_.forward(inputs).toTensor();
+        } catch (const c10::Error& e) {
+            RCLCPP_ERROR(this->get_logger(), "Error during LSTM position prediction: %s", e.what());
+            return;
+        }
+        gtsam::Point3 predicted_pos(
+            output_tensor[0][0].item<double>(), 
+            output_tensor[0][1].item<double>(),
+            output_tensor[0][2].item<double>()
+        );
+        // 3. 创建并添加新因子
+        gtsam::Key latest_key = fgo_->getLatestKey();
+        if (latest_key == 0) return;
+        std::vector<double> noise_pos_vec = {5.0, 5.0, 10.0}; // 可从参数读取
+        auto noise_model = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3(noise_pos_vec[0], noise_pos_vec[1], noise_pos_vec[2]));
+        gtsam::Point3 arm(0.0, 0.0, 0.0); // 杆臂偏移，根据实际情况设置
+        auto lstm_factor = boost::make_shared<fgo::factor::LSTMPositionFactor>(latest_key, predicted_pos, arm, noise_model);
+        {
+            std::unique_lock<std::mutex> lock(fgo_->getGraphMutex());
+            fgo_->addFactor(lstm_factor);
+        }
+        RCLCPP_INFO(this->get_logger(), "LSTMPositionFactor added to the graph for key %zu", latest_key);
+    }
+    
+    // 辅助函数：将GTSAM位姿转换为PyTorch张量
+    torch::Tensor poseToTensor(const gtsam::Pose3& pose) {
+        // 提取位置和姿态信息
+        auto position = pose.translation();
+        auto rotation = pose.rotation();
+        
+        // 转换为欧拉角
+        auto euler = rotation.rpy();
+        
+        // 创建特征向量 [x, y, z, roll, pitch, yaw]
+        std::vector<float> features = {
+            static_cast<float>(position.x()),
+            static_cast<float>(position.y()),
+            static_cast<float>(position.z()),
+            static_cast<float>(euler.x()),
+            static_cast<float>(euler.y()),
+            static_cast<float>(euler.z())
+        };
+        
+        return torch::tensor(features, torch::kFloat32);
+    }
+    
+    // 辅助函数：将PyTorch张量转换为GTSAM点
+    gtsam::Point3 tensorToPoint(const torch::Tensor& tensor) {
+        auto tensor_cpu = tensor.cpu();
+        auto data_ptr = tensor_cpu.data_ptr<float>();
+        
+        return gtsam::Point3(data_ptr[0], data_ptr[1], data_ptr[2]);
+    }
 };
 
 } // namespace underwater_navigation
